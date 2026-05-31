@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ba Zi Analytics Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'IBM Plex Sans Thai', 'Segoe UI', sans-serif; background: #fff; color: #111; min-height: 100vh; }
+  .header { padding: 18px 32px; border-bottom: 1px solid #ebebeb; display: flex; align-items: center; justify-content: space-between; }
+  .header h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.3px; }
+  .header p { font-size: 12px; color: #999; margin-top: 3px; }
+  .refresh-btn { background: transparent; border: 1px solid #4a7c78; color: #4a7c78; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; font-family: inherit; font-weight: 500; transition: all 0.15s; }
+  .refresh-btn:hover { background: #4a7c78; color: #fff; }
+  .container { padding: 28px 32px; max-width: 1200px; margin: 0 auto; }
+  .section-title { font-size: 11px; font-weight: 600; color: #bbb; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 14px; }
+  .charts-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-bottom: 14px; }
+  .chart-card { border: 1px solid #ebebeb; border-radius: 10px; padding: 18px 20px; }
+  .chart-card h3 { font-size: 11px; font-weight: 600; color: #bbb; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 14px; }
+  .chart-card canvas { max-height: 240px; }
+  .insights-section { margin-bottom: 14px; }
+  .insights-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+  .insight-card { border: 1px solid #ebebeb; border-radius: 10px; padding: 18px; border-left: 3px solid #4a7c78; }
+  .insight-card .tag { font-size: 10px; background: #f0f5f5; color: #4a7c78; padding: 2px 8px; border-radius: 4px; display: inline-block; margin-bottom: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; }
+  .insight-card h4 { font-size: 15px; font-weight: 700; margin-bottom: 6px; line-height: 1.4; }
+  .insight-card p { font-size: 13px; color: #666; line-height: 1.7; }
+  .loading { text-align: center; padding: 80px; color: #999; font-size: 14px; }
+  .error { text-align: center; padding: 32px; color: #c97b6b; border: 1px solid #f5ddd9; border-radius: 10px; background: #fef9f8; }
+  .shop-section { margin-bottom: 14px; }
+  .shop-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+  .shop-card { border: 1px solid #ebebeb; border-radius: 10px; padding: 16px; text-align: center; position: relative; overflow: hidden; }
+  .shop-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--el-color); }
+  .shop-card .el-emoji { font-size: 28px; margin-bottom: 6px; display: block; }
+  .shop-card .el-name { font-size: 14px; font-weight: 600; margin-bottom: 3px; color: #111; }
+  .shop-card .el-count { font-size: 11.5px; color: #999; margin-bottom: 10px; }
+  .shop-links { display: flex; flex-direction: column; gap: 7px; }
+  .shop-link { display: block; padding: 7px 10px; border-radius: 7px; font-size: 12.5px; font-weight: 500; text-decoration: none; border: 1px solid var(--el-color); color: var(--el-color); background: transparent; transition: all 0.15s; }
+  .shop-link:hover { background: var(--el-color); color: #fff; }
+  .shop-card .pct-bar { height: 3px; border-radius: 2px; background: #f0f0f0; margin-bottom: 10px; overflow: hidden; }
+  .shop-card .pct-fill { height: 100%; background: var(--el-color); border-radius: 2px; }
+</style>
+</head>
+<body>
+<div class="header">
+  <div>
+    <h1>Ba Zi Analytics</h1>
+    <p id="last-update">กำลังโหลดข้อมูล...</p>
+  </div>
+  <button class="refresh-btn" onclick="loadData()">↻ Refresh</button>
+</div>
+<div class="container">
+  <div id="loading" class="loading">กำลังดึงข้อมูลจาก Google Sheets...</div>
+  <div id="content" style="display:none">
+    <div class="insights-section">
+      <div class="section-title">Marketing Insights</div>
+      <div style="display:flex;gap:16px;align-items:flex-start;">
+        <div style="border:1px solid #ebebeb;border-radius:10px;padding:24px 28px;min-width:130px;flex-shrink:0;text-align:center;">
+          <div style="font-size:56px;font-weight:700;letter-spacing:-2px;line-height:1;color:#111;" id="kpi-total">-</div>
+          <div style="font-size:11px;color:#bbb;margin-top:8px;letter-spacing:0.06em;text-transform:uppercase;">ผู้ใช้ทั้งหมด</div>
+        </div>
+        <div class="insights-grid" id="insights-grid" style="flex:1;margin:0;"></div>
+      </div>
+    </div>
+    <div class="charts-grid">
+      <div class="chart-card"><h3>Day Master Distribution</h3><canvas id="chartDayMaster"></canvas></div>
+      <div class="chart-card"><h3>ธาตุ (Element) Distribution</h3><canvas id="chartElement"></canvas></div>
+      <div class="chart-card"><h3>ดวง — Strong / Weak / Balanced</h3><canvas id="chartDuang"></canvas></div>
+      <div class="chart-card"><h3>ธาตุเสริมหลัก (Supporting Elements)</h3><canvas id="chartSupport"></canvas></div>
+    </div>
+    <div class="charts-grid" style="grid-template-columns:repeat(3,1fr);">
+      <div class="chart-card"><h3>Generation Breakdown</h3><canvas id="chartGen"></canvas></div>
+      <div class="chart-card">
+        <h3>ภาษาที่ใช้งาน</h3>
+        <div id="lang-summary" style="display:flex;gap:12px;margin-bottom:12px;"></div>
+        <canvas id="chartLang"></canvas>
+      </div>
+      <div class="chart-card"><h3>องค์ประกอบมงคล</h3><div id="mongkol-list"></div></div>
+    </div>
+    <div class="shop-section">
+      <div class="section-title">ช้อปไอเทมเสริมธาตุ — เรียงตามความนิยม</div>
+      <div class="shop-grid" id="shop-grid"></div>
+    </div>
+  </div>
+  <div id="error-msg" class="error" style="display:none"></div>
+</div>
+<script>
+const API_URL='https://script.google.com/macros/s/AKfycbyuQvWBOJSFrvg1S4WcuEcGjfQ6GNV-p3UqIimcOE57pGLA7q0GIVbmiqlrtl5Gh38o/exec';
+const EL_NORMALIZE={'Wood':'ไม้','Fire':'ไฟ','Earth':'ดิน','Metal':'ทอง','Water':'น้ำ'};
+const DM_NORMALIZE={'Yang Wood':'ไม้ใหญ่','Yin Wood':'ไม้เล็ก','Yang Fire':'ไฟใหญ่','Yin Fire':'ไฟเล็ก','Yang Earth':'ดินใหญ่','Yin Earth':'ดินเล็ก','Yang Metal':'ทองใหญ่','Yin Metal':'ทองเล็ก','Yang Water':'น้ำใหญ่','Yin Water':'น้ำเล็ก','Wood Yang':'ไม้ใหญ่','Wood Yin':'ไม้เล็ก','Fire Yang':'ไฟใหญ่','Fire Yin':'ไฟเล็ก','Earth Yang':'ดินใหญ่','Earth Yin':'ดินเล็ก','Metal Yang':'ทองใหญ่','Metal Yin':'ทองเล็ก','Water Yang':'น้ำใหญ่','Water Yin':'น้ำเล็ก'};
+const ELEMENT_SHOP={'ไม้':{emoji:'🌿',color:'#7a8650',links:[{label:'ไอเทมเสริมธาตุไม้',url:'https://lin.ee/usowfv7'}]},'ไฟ':{emoji:'🔥',color:'#c97b6b',links:[{label:'ไอเทมเสริมธาตุไฟ',url:'https://lin.ee/Qp0vsXE'}]},'ดิน':{emoji:'🪨',color:'#c9a87a',links:[{label:'ไอเทมเสริมธาตุดิน',url:'https://lin.ee/xlquut8'}]},'ทอง':{emoji:'✨',color:'#b89968',links:[{label:'ไอเทมเสริมธาตุทอง',url:'https://shop.line.me/@moreoverdesign/product/1008105880'}]},'น้ำ':{emoji:'💧',color:'#5a7a9a',links:[{label:'ไอเทมเสริมธาตุน้ำ',url:'https://lin.ee/SRCpk0T'}]}};
+const EL_COLOR={'ไม้':'#7a8650','ไฟ':'#c97b6b','ดิน':'#c9a87a','ทอง':'#b89968','น้ำ':'#5a7a9a'};
+const COLORS=['#4a7c78','#7a8650','#c97b6b','#b89968','#5a7a9a','#9b7bb5','#6b9ab8','#c9a87a','#8aab7a','#a07868'];
+let charts={};
+function dmColor(l){if(l.includes('ไม้'))return EL_COLOR['ไม้'];if(l.includes('ไฟ'))return EL_COLOR['ไฟ'];if(l.includes('ดิน'))return EL_COLOR['ดิน'];if(l.includes('ทอง'))return EL_COLOR['ทอง'];if(l.includes('น้ำ'))return EL_COLOR['น้ำ'];return '#ccc';}
+function getAge(dob){if(!dob)return null;const d=new Date(dob);if(isNaN(d))return null;const t=new Date();let a=t.getFullYear()-d.getFullYear();if(t<new Date(t.getFullYear(),d.getMonth(),d.getDate()))a--;return a;}
+function getGen(a){if(a==null)return 'Unknown';const b=new Date().getFullYear()-a;if(b>=2013)return 'Gen Alpha';if(b>=1997)return 'Gen Z';if(b>=1981)return 'Millennial';if(b>=1965)return 'Gen X';if(b>=1946)return 'Boomer';return 'Silent';}
+function count(arr,key){return arr.reduce((a,r)=>{const v=r[key]||'ไม่ระบุ';a[v]=(a[v]||0)+1;return a;},{});}
+function sorted(obj,n=20){return Object.entries(obj).sort((a,b)=>b[1]-a[1]).slice(0,n);}
+function destroyChart(id){if(charts[id]){charts[id].destroy();delete charts[id];}}
+function makeChart(id,labels,data,type='bar',colors=null){
+  destroyChart(id);
+  charts[id]=new Chart(document.getElementById(id).getContext('2d'),{type,
+    data:{labels,datasets:[{data,backgroundColor:colors||COLORS.slice(0,labels.length),borderRadius:type==='bar'?6:0,borderSkipped:false}]},
+    options:{responsive:true,maintainAspectRatio:true,
+      plugins:{legend:{display:type!=='bar',labels:{color:'#555',font:{size:11}}}},
+      scales:(type==='pie'||type==='doughnut')?{}:{x:{ticks:{color:'#888',font:{size:11}},grid:{color:'#f0f0f0'}},y:{ticks:{color:'#888'},grid:{color:'#f0f0f0'}}}}});
+}
+async function loadData(){
+  document.getElementById('loading').style.display='block';
+  document.getElementById('content').style.display='none';
+  document.getElementById('error-msg').style.display='none';
+  try{
+    const data=await fetch(API_URL).then(r=>r.json());
+    if(!Array.isArray(data)||!data.length)throw new Error('ไม่พบข้อมูล');
+    const total=data.length;
+    document.getElementById('kpi-total').textContent=total.toLocaleString();
+    const ageData=data.map(r=>getAge(r['วันเกิด']));
+    const genCounts=ageData.map(a=>getGen(a)).reduce((a,g)=>{a[g]=(a[g]||0)+1;return a;},{});
+    const dmCounts={};
+    data.forEach(r=>{const raw=r['Day Master']||'ไม่ระบุ';const k=DM_NORMALIZE[raw]||raw;dmCounts[k]=(dmCounts[k]||0)+1;});
+    const elCounts=count(data,'ธาตุ');
+    const duangCounts=count(data,'ดวง');
+    const supCounts={};
+    data.forEach(r=>{(r['ธาตุเสริมหลัก']||'').split(',').map(s=>s.trim()).filter(Boolean).forEach(el=>{const k=EL_NORMALIZE[el]||el;supCounts[k]=(supCounts[k]||0)+1;});});
+    const mongCounts={};
+    data.forEach(r=>{(r['องค์ประกอบมงคล']||'').split(',').map(s=>s.trim()).filter(Boolean).forEach(it=>{mongCounts[it]=(mongCounts[it]||0)+1;});});
+    const langCounts=count(data,'ภาษา');
+    const thCnt=Object.entries(langCounts).filter(([k])=>k.toLowerCase()==='th'||k==='ไทย').reduce((s,[,v])=>s+v,0);
+    const enCnt=Object.entries(langCounts).filter(([k])=>k.toLowerCase()==='en'||k.toLowerCase()==='english').reduce((s,[,v])=>s+v,0);
+
+    const dmE=sorted(dmCounts,10);
+    makeChart('chartDayMaster',dmE.map(e=>e[0]),dmE.map(e=>e[1]),'bar',dmE.map(([l])=>dmColor(l)));
+    const elE=sorted(elCounts,10);
+    makeChart('chartElement',elE.map(e=>e[0]),elE.map(e=>e[1]),'doughnut',elE.map(([l])=>EL_COLOR[l]||'#ccc'));
+    const duE=sorted(duangCounts);
+    makeChart('chartDuang',duE.map(e=>e[0]),duE.map(e=>e[1]),'doughnut');
+    const suE=sorted(supCounts,8);
+    makeChart('chartSupport',suE.map(e=>e[0]),suE.map(e=>e[1]),'bar',suE.map(([l])=>EL_COLOR[l]||'#ccc'));
+    const geE=sorted(genCounts).filter(([g])=>g!=='Unknown');
+    makeChart('chartGen',geE.map(e=>e[0]),geE.map(e=>e[1]),'bar');
+    makeChart('chartLang',['ไทย','EN'],[thCnt,enCnt],'doughnut',['#4a7c78','#b89968']);
+
+    document.getElementById('lang-summary').innerHTML=[{label:'ไทย',cnt:thCnt,color:'#4a7c78'},{label:'EN',cnt:enCnt,color:'#b89968'}]
+      .map(l=>`<div style="flex:1;border:1px solid #ebebeb;border-radius:8px;padding:10px 12px;border-top:3px solid ${l.color}"><div style="font-size:22px;font-weight:700;letter-spacing:-0.5px">${l.cnt}</div><div style="font-size:11px;color:#999;margin-top:2px">${l.label} · ${Math.round(l.cnt/total*100)}%</div></div>`).join('');
+
+    const mongE=sorted(mongCounts,15);
+    document.getElementById('mongkol-list').innerHTML=mongE.map(([name,cnt])=>`
+      <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #f5f5f5;">
+        <div style="flex:1;font-size:13px;">${name}</div>
+        <div style="font-size:13px;font-weight:600;min-width:24px;text-align:right">${cnt}</div>
+        <div style="width:60px;background:#f0f0f0;border-radius:3px;height:5px;overflow:hidden;"><div style="width:${Math.round(cnt/(mongE[0]?.[1]||1)*100)}%;height:100%;background:#4a7c78;border-radius:3px;"></div></div>
+        <div style="font-size:11px;color:#999;min-width:30px;text-align:right">${Math.round(cnt/total*100)}%</div>
+      </div>`).join('');
+
+    const shopE=sorted(supCounts).filter(([el])=>ELEMENT_SHOP[el]);
+    document.getElementById('shop-grid').innerHTML=shopE.map(([el,cnt])=>{
+      const info=ELEMENT_SHOP[el],pct=Math.round(cnt/total*100),barW=Math.round(cnt/(shopE[0]?.[1]||1)*100);
+      return `<div class="shop-card" style="--el-color:${info.color}"><span class="el-emoji">${info.emoji}</span><div class="el-name">ธาตุ${el}</div><div class="el-count">${cnt} คน (${pct}%)</div><div class="pct-bar"><div class="pct-fill" style="width:${barW}%"></div></div><div class="shop-links">${info.links.map(l=>`<a class="shop-link" href="${l.url}" target="_blank" rel="noopener">${l.label} →</a>`).join('')}</div></div>`;
+    }).join('');
+
+    const ins=[];
+    const topEl=sorted(elCounts)[0];
+    if(topEl)ins.push({tag:'ธาตุ',title:`"${topEl[0]}" ครองตลาด ${Math.round(topEl[1]/total*100)}%`,text:`ธาตุ${topEl[0]}มากที่สุดในกลุ่มผู้ใช้ สินค้า/บริการที่เสริมธาตุ${topEl[0]}มีโอกาสสูง`});
+    const sPct=Math.round((duangCounts['strong']||0)/total*100),wPct=Math.round((duangCounts['weak']||0)/total*100);
+    ins.push({tag:'ดวง',title:`${sPct}% ดวง Strong`,text:`กลุ่ม Strong (${sPct}%) ต้องการ "ลด/ผ่อนคลาย" กลุ่ม Weak (${wPct}%) ต้องการเสริมกำลัง`});
+    const gL=sorted(genCounts).filter(([g])=>g!=='Unknown');
+    if(gL.length)ins.push({tag:'Generation',title:`${gL[0][0]} คือกลุ่มหลัก (${Math.round(gL[0][1]/total*100)}%)`,text:`${gL[0][0]}${gL[1]?' และ '+gL[1][0]:''} เป็น core audience`});
+    const topM=sorted(mongCounts)[0];
+    if(topM)ins.push({tag:'มงคล',title:`"${topM[0]}" ยอดนิยม`,text:`${Math.round(topM[1]/total*100)}% มีองค์ประกอบนี้`});
+    const topS=sorted(supCounts)[0];
+    if(topS)ins.push({tag:'ธาตุเสริม',title:`ธาตุ "${topS[0]}" เสริมดวงสูงสุด`,text:`สินค้าที่มีธาตุ${topS[0]}จะดึงดูดกลุ่มผู้ใช้ส่วนใหญ่`});
+    const ages=ageData.filter(a=>a!==null);
+    if(ages.length){const avg=Math.round(ages.reduce((a,b)=>a+b,0)/ages.length);ins.push({tag:'อายุ',title:`อายุเฉลี่ย ${avg} ปี`,text:`${Math.round(ages.filter(a=>a<30).length/ages.length*100)}% อายุต่ำกว่า 30`});}
+    document.getElementById('insights-grid').innerHTML=ins.map(i=>`<div class="insight-card"><span class="tag">${i.tag}</span><h4>${i.title}</h4><p>${i.text}</p></div>`).join('');
+
+    document.getElementById('last-update').textContent=`อัปเดต: ${new Date().toLocaleString('th-TH')} | ทั้งหมด ${total} รายการ`;
+    document.getElementById('loading').style.display='none';
+    document.getElementById('content').style.display='block';
+  }catch(err){
+    document.getElementById('loading').style.display='none';
+    document.getElementById('error-msg').style.display='block';
+    document.getElementById('error-msg').textContent='โหลดข้อมูลไม่ได้: '+err.message;
+  }
+}
+loadData();
+</script>
+</body>
+</html>
